@@ -70,7 +70,7 @@ module.exports = class FakeHttpsWebSite {
                 } else {
                     setTimeout(() => {
                         _createServer.call(this, resolve, reject)
-                    }, 500)
+                    }, 200)
                 }
             })
         }

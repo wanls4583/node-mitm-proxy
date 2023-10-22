@@ -4,17 +4,19 @@ const _ = require('lodash');
 var utils = exports;
 var pki = forge.pki;
 
+var rsaKey = null; // 生成密钥对需花费1-3s，全局只使用一个
+
 utils.covertNodeCertToForgeCert = function (originCertificate) {
     var obj = forge.asn1.fromDer(originCertificate.raw.toString('binary'));
     return forge.pki.certificateFromAsn1(obj);
 }
 
 utils.createFakeCertificateByDomain = function (caKey, caCert, domains) {
-    var keys = pki.rsa.generateKeyPair(2046);
     var cert = pki.createCertificate();
 
+    rsaKey = rsaKey || pki.rsa.generateKeyPair(2048)
     domains = typeof domains === 'string' ? [domains] : domains
-    cert.publicKey = keys.publicKey;
+    cert.publicKey = rsaKey.publicKey;
 
     cert.serialNumber = (new Date()).getTime() + '';
     cert.validity.notBefore = new Date();
@@ -42,9 +44,16 @@ utils.createFakeCertificateByDomain = function (caKey, caCert, domains) {
     }];
 
     let defaultHostList = utils.getHostList(domains).map(item => {
-        return {
-            type: 2,
-            value: item
+        if (item.match(/^[\d\.]+$/)) {
+            return {
+                type: 7, 
+                ip: item 
+            }
+        } else {
+            return {
+                type: 2,
+                value: item
+            }
         }
     })
 
@@ -90,7 +99,7 @@ utils.createFakeCertificateByDomain = function (caKey, caCert, domains) {
     cert.sign(caKey, forge.md.sha256.create());
 
     return {
-        key: keys.privateKey,
+        key: rsaKey.privateKey,
         cert: cert
     };
 }
@@ -98,9 +107,9 @@ utils.createFakeCertificateByDomain = function (caKey, caCert, domains) {
 utils.createFakeCertificateByCA = function (caKey, caCert, originCertificate) {
     var certificate = utils.covertNodeCertToForgeCert(originCertificate);
 
-    var keys = pki.rsa.generateKeyPair(2046);
     var cert = pki.createCertificate();
-    cert.publicKey = keys.publicKey;
+    rsaKey = rsaKey || pki.rsa.generateKeyPair(2048);
+    cert.publicKey = rsaKey.publicKey;
 
     cert.serialNumber = certificate.serialNumber;
     cert.validity.notBefore = new Date();
@@ -153,7 +162,7 @@ utils.createFakeCertificateByCA = function (caKey, caCert, originCertificate) {
     cert.sign(caKey, forge.md.sha256.create());
 
     return {
-        key: keys.privateKey,
+        key: rsaKey.privateKey,
         cert: cert
     };
 }
@@ -169,7 +178,7 @@ utils.getHostNamesFromCert = function (cert) {
     let altNames = cert.getExtension('subjectAltName') ? cert.getExtension('subjectAltName').altNames : [];
     hostList.push(cert.subject.getField('CN') ? cert.subject.getField('CN').value : '');
     hostList = hostList.concat(_.map(altNames, 'value'));
-    return hostList;
+    return hostList.filter((host) => host);
 }
 
 utils.getHostList = function (hostnames) {
@@ -178,10 +187,13 @@ utils.getHostList = function (hostnames) {
     hostnames = Array.from(new Set(hostnames))
     hostnames.forEach(hostname => {
         defaultHostList.push(hostname)
-        let arr = hostname.split('.')
-        for (let i = arr.length - 2; i >= 0; i--) {
-            defaultHostList.push('*.' + arr.slice(i).join('.'))
-        }
+        // let arr = hostname.split('.')
+        // for (let i = arr.length - 3; i >= 0; i--) {
+        //     defaultHostList.push('*.' + arr.slice(i).join('.'))
+        // }
+        // if (arr.length === 3 && arr[0] === 'www') {
+        //     defaultHostList.push('*.' + arr.slice(1))
+        // }
     })
     return Array.from(new Set(defaultHostList))
 }

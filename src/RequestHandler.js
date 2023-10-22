@@ -6,7 +6,6 @@ const colors = require('colors')
 module.exports = class RequestHandler{
     async onRequest(req, res, ssl) {
         var proxyReq = null;
-        var fullUrl = req.url
         var urlObject = url.parse(req.url);
         var defaultPort = ssl ? 443 : 80;
         var protocol = ssl ? 'https:' : 'http:';
@@ -18,6 +17,7 @@ module.exports = class RequestHandler{
             path: urlObject.path,
             headers: req.headers,
         }
+        var fullUrl = rOptions.hostname + rOptions.path
     
         if (rOptions.headers.connection === 'close') {
             req.socket.setKeepAlive(false);

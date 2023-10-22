@@ -39,6 +39,10 @@ module.exports = class HttpProxy {
     }
     onConnect(req, cltSocket, head) {
         let srvUrl = url.parse(`http://${req.url}`);
+        if (!srvUrl) {
+            console.log(req)
+            console.log(req.url)
+        }
 
         this.httpsWebSite.createServer(srvUrl.hostname, srvUrl.port).then((port) => {
             let srvSocket = net.connect(port, '127.0.0.1', () => {
