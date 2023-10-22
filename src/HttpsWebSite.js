@@ -12,12 +12,13 @@ const CertAndKeyContainer = require('./CertAndKeyContainer');
 const defaultCaCertPath = path.join(__dirname, '../rootCA/rootCA.crt');
 const defaultCaKeyPath = path.join(__dirname, '../rootCA/rootCA.key.pem');
 
-module.exports = class FakeHttpsWebSite{
+module.exports = class FakeHttpsWebSite {
     constructor({ requestHandler, maxQueue = 100, caCertPath = defaultCaCertPath, caKeyPath = defaultCaKeyPath }) {
         this.requestHandler = requestHandler
         this.caCertPath = caCertPath
         this.caKeyPath = caKeyPath
         this.serverQueue = []
+        this.waitQueue = []
         this.maxQueue = maxQueue
         this.initCert()
     }
@@ -47,50 +48,60 @@ module.exports = class FakeHttpsWebSite{
      * @param  {[type]} successFun [description]
      * @return {[type]}            [description]
      */
-    createServer(hostname, port) {
-        if (!process.env.hideLog) {
-            console.log(colors.yellow('connect server:'), hostname)
-        }
+    async createServer(hostname) {
+        // !process.env.hideLog && console.log(colors.yellow('connect server:'), hostname)
 
-        for(let i = this.serverQueue.length - 1; i >= 0; i--) {
+        for (let i = this.serverQueue.length - 1; i >= 0; i--) {
             let serverObj = this.serverQueue[i]
             if (serverObj.hostList.find(host => tlsUtils.isMappingHostName(host, hostname))) {
                 return serverObj.promise
             }
         }
 
-        const serverObj = { hostList: [hostname]}
+        this.promiseObj = this.promiseObj || _createPromise.call(this)
+        this.waitQueue.push(hostname)
 
-        serverObj.promise = new Promise(async (resolve, reject) => {
-            let certObj = await this.certContainer.getCert(hostname, port)
+        return this.promiseObj
+
+        function _createPromise() {
+            return new Promise((resolve, reject) => {
+                if (this.waitQueue.length > 1) {
+                    _createServer.call(this, resolve, reject)
+                } else {
+                    setTimeout(() => {
+                        _createServer.call(this, resolve, reject)
+                    }, 500)
+                }
+            })
+        }
+
+        async function _createServer(resolve, reject) {
+            const certObj = this.certContainer.getCert(this.waitQueue)
             let httpsServer = new https.Server({
                 key: pki.privateKeyToPem(certObj.key),
                 cert: pki.certificateToPem(certObj.cert),
                 SNICallback: async (hostname, done) => {
-                    let certObj = await this.certContainer.getCert(hostname, port)
+                    let certObj = this.certContainer.getCert(hostname)
                     done(null, tls.createSecureContext({
                         key: pki.privateKeyToPem(certObj.key),
                         cert: pki.certificateToPem(certObj.cert)
                     }))
                 }
             })
-            serverObj.server = httpsServer
-            
-            httpsServer.listen(0, () => {
-                let address = httpsServer.address()
-                serverObj.host = address.host
-                serverObj.port = address.port
-            })
-            
+
+            httpsServer.listen(0)
+
             httpsServer.on('listening', () => {
-                resolve(serverObj.port)
-                serverObj.hostList = tlsUtils.getHostNamesFromCert(certObj.cert)
-                serverObj.hostList = serverObj.hostList.length ? serverObj.hostList : [hostname]
-                if (!process.env.hideLog) {
-                    console.log(colors.green('add server:'), hostname)
-                }
+                resolve(httpsServer.address().port)
+                this.addServerObj({
+                    promise: this.promiseObj,
+                    hostList: tlsUtils.getHostNamesFromCert(certObj.cert)
+                })
+                // !process.env.hideLog && console.log(colors.green('add server:'), hostname)
+                this.promiseObj = null
+                this.waitQueue = []
             })
-            
+
             httpsServer.on('request', (req, res) => {
                 this.requestHandler.onRequest(req, res, true)
             })
@@ -98,25 +109,14 @@ module.exports = class FakeHttpsWebSite{
             httpsServer.on('error', (e) => {
                 reject(e)
             })
-        }).catch((e) => {
-            serverObj.hostList = []
-            this.delServerObj(serverObj)
-            throw e
-        })
-        this.addServerObj(serverObj)
-
-        return serverObj.promise
+        }
     }
     addServerObj(serverObj) {
         if (this.serverQueue.length > this.maxQueue) {
             let serverObj = this.serverQueue.shift()
             serverObj.server && serverObj.server.close()
-            serverObj.promise.reject({exceedMaxQueue: true})
+            serverObj.promise.reject({ exceedMaxQueue: true })
         }
         this.serverQueue.push(serverObj)
-    }
-    delServerObj(serverObj) {
-        let index = this.serverQueue.indexOf(serverObj)
-        index > -1 && this.serverQueue.splice(index, 1)
     }
 }
