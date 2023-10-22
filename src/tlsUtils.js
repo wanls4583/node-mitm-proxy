@@ -158,10 +158,10 @@ utils.isMappingHostName = function (DNSName, hostname) {
     return (new RegExp(reg)).test(hostname);
 }
 
-utils.getMappingHostNamesFormCert = function (cert) {
-    var mappingHostNames = [];
-    mappingHostNames.push(cert.subject.getField('CN') ? cert.subject.getField('CN').value : '');
-    var altNames = cert.getExtension('subjectAltName') ? cert.getExtension('subjectAltName').altNames : [];
-    mappingHostNames = mappingHostNames.concat(_.map(altNames, 'value'));
-    return mappingHostNames;
+utils.getHostNamesFromCert = function (cert) {
+    let hostList = [];
+    let altNames = cert.getExtension('subjectAltName') ? cert.getExtension('subjectAltName').altNames : [];
+    hostList.push(cert.subject.getField('CN') ? cert.subject.getField('CN').value : '');
+    hostList = hostList.concat(_.map(altNames, 'value'));
+    return hostList;
 }

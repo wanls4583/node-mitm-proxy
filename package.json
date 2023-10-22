@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "agentkeepalive": "^2.1.1",
+    "colors": "^1.4.0",
     "lodash": "^4.7.0",
     "mkdirp": "^0.5.1",
     "node-forge": "^0.6.39",

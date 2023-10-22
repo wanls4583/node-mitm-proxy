@@ -1,55 +1,41 @@
 const tlsUtils = require('./tlsUtils');
 const https = require('https');
+const colors = require('colors');
 
 module.exports = class CertAndKeyContainer {
     constructor({
-        maxLength = 1000,
+        maxQueue = 1000,
         getCertSocketTimeout = 2 * 1000,
         caCert,
         caKey
     }) {
-        this.queue = [];
-        this.maxLength = maxLength;
-        this.getCertSocketTimeout = getCertSocketTimeout;
-        this.caCert = caCert;
-        this.caKey = caKey;
+        this.certQueue = []
+        this.maxQueue = maxQueue
+        this.getCertSocketTimeout = getCertSocketTimeout
+        this.caCert = caCert
+        this.caKey = caKey
     }
-    addCertPromise (certPromiseObj) {
-        if (this.queue.length >= this.maxLength) {
-            this.queue.shift();
-        }
-        this.queue.push(certPromiseObj);
-        return certPromiseObj;
-    }
-    getCertPromise (hostname, port) {
-        for (let i = 0; i < this.queue.length; i++) {
-            let _certPromiseObj = this.queue[i];
-            let mappingHostNames = _certPromiseObj.mappingHostNames;
-            for (let j = 0; j < mappingHostNames.length; j++) {
-                let DNSName = mappingHostNames[j];
-                if (tlsUtils.isMappingHostName(DNSName, hostname)) {
-                    this.reRankCert(i);
-                    return _certPromiseObj.promise;
-                }
+    getCert (hostname, port) {
+        for(let i = this.certQueue.length - 1; i >= 0; i--) {
+            let serverObj = this.certQueue[i]
+            if (serverObj.hostList.find(host => tlsUtils.isMappingHostName(host, hostname))) {
+                return serverObj.promise
             }
         }
 
-        var certPromiseObj = {
-            mappingHostNames: [hostname] // temporary hostname
+        if (!process.env.hideLog) {
+            console.log(colors.blue('creating cert:'), hostname)
         }
+
+        const certPromiseObj = { hostList: [hostname]}
 
         let promise = new Promise((resolve, reject) => {
-            var once = true;
-            var _resolve = (_certObj) => {
-                if (once) {
-                    once = false;
-                    var mappingHostNames = tlsUtils.getMappingHostNamesFormCert(_certObj.cert);
-                    certPromiseObj.mappingHostNames = mappingHostNames; // change
-                    resolve(_certObj);
-                }
+            if (!process.env.hideLog) {
+                console.time('cert-head-' + hostname)
+                console.time('cert-' + hostname)
             }
-            let certObj;
-            var preReq = https.request({
+            let certObj = null;
+            let preReq = https.request({
                 port: port,
                 hostname: hostname,
                 path: '/',
@@ -57,42 +43,59 @@ module.exports = class CertAndKeyContainer {
             }, (preRes) => {
                 try {
                     var realCert  = preRes.socket.getPeerCertificate();
-                    if (realCert) {
-                        try {
-                            certObj = tlsUtils.createFakeCertificateByCA(this.caKey, this.caCert, realCert);
-                        } catch (error) {
+                    console.timeEnd('cert-head-' + hostname)
+                    if (!certObj) {
+                        if (realCert) {
+                            try {
+                                certObj = tlsUtils.createFakeCertificateByCA(this.caKey, this.caCert, realCert);
+                            } catch (error) {
+                                certObj = tlsUtils.createFakeCertificateByDomain(this.caKey, this.caCert, hostname);
+                            }
+                        } else {
                             certObj = tlsUtils.createFakeCertificateByDomain(this.caKey, this.caCert, hostname);
                         }
-                    } else {
-                        certObj = tlsUtils.createFakeCertificateByDomain(this.caKey, this.caCert, hostname);
                     }
-                    _resolve(certObj);
+                    resolve(certObj);
                 } catch (e) {
                     reject(e);
                 }
             });
             preReq.setTimeout(~~this.getCertSocketTimeout, () => {
                 if (!certObj) {
+                    !process.env.hideLog && console.log(colors.red('get-cert-timeout: '), hostname)
                     certObj = tlsUtils.createFakeCertificateByDomain(this.caKey, this.caCert, hostname);
-                    _resolve(certObj);
+                    resolve(certObj);
                 }
             });
             preReq.on('error', (e) => {
                 if (!certObj) {
                     certObj = tlsUtils.createFakeCertificateByDomain(this.caKey, this.caCert, hostname);
-                    _resolve(certObj);
+                    resolve(certObj);
                 }
             })
             preReq.end();
-        });
+        }).then((certObj) => {
+            certPromiseObj.hostList = tlsUtils.getHostNamesFromCert(certObj.cert)
+            certPromiseObj.hostList = certPromiseObj.hostList.length ? certPromiseObj.hostList : [hostname]
+            if (!process.env.hideLog) {
+                console.log(colors.magenta('created cert:'), hostname)
+                console.timeEnd('cert-' + hostname)
+            }
+
+            return certObj
+        })
 
         certPromiseObj.promise = promise;
 
-        return (this.addCertPromise(certPromiseObj)).promise;
+        this.addCertPromise(certPromiseObj)
 
+        return promise;
     }
-    reRankCert (index) {
-        // index ==> queue foot
-        this.queue.push((this.queue.splice(index, 1))[0]);
+    addCertPromise(certPromiseObj) {
+        if (this.certQueue.length > this.maxQueue) {
+            let certPromiseObj = this.certQueue.shift()
+            certPromiseObj.reject({exceedMaxQueue: true})
+        }
+        this.certQueue.push(certPromiseObj)
     }
 }

@@ -1,6 +1,7 @@
 const url = require('url')
 const http = require('http')
 const https = require('https')
+const colors = require('colors')
 
 module.exports = class RequestHandler{
     async onRequest(req, res, ssl) {
@@ -43,7 +44,7 @@ module.exports = class RequestHandler{
     
                 function onFree() {
                     proxyReq = (rOptions.protocol == 'https:' ? https : http).request(rOptions, (proxyRes) => {
-                        console.log(`request:`, fullUrl)
+                        // !process.env.hideLog &&console.log(colors.green(`request:`), fullUrl)
                         resolve(proxyRes);
                     })
 
