@@ -9,6 +9,7 @@ module.exports = class CertAndKeyContainer {
         this.caCert = caCert
         this.caKey = caKey
         this.certQueue = []
+        this.maxQueue = 1000
     }
     getCert (hostnames) {
         hostnames = typeof hostnames === 'string' ? [hostnames] : hostnames
@@ -23,7 +24,7 @@ module.exports = class CertAndKeyContainer {
 
         let certObj = tlsUtils.createFakeCertificateByDomain(this.caKey, this.caCert, hostnames)
         let hostList = tlsUtils.getHostNamesFromCert(certObj.cert)
-        this.certQueue.push({
+        this.addQueue({
             cert: certObj,
             hostList: hostList
         })
@@ -31,5 +32,11 @@ module.exports = class CertAndKeyContainer {
         !process.env.hideLog && console.log(colors.green('added-cert: '), Array.from(new Set(hostnames)).join('|'))
 
         return certObj
+    }
+    addQueue(obj) {
+        if (this.certQueue.length > this.maxQueue) {
+            this.certQueue = this.caCert.slice(-900)
+        }
+        this.certQueue.push(obj)
     }
 }
