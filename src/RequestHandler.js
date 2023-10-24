@@ -9,7 +9,7 @@ const _getName = HttpAgent.prototype.getName
 const getName = (option) => {
     var name = _getName.call(this, option);
     if (option.customSocketId) {
-        name += option.customSocketId
+        name += ':' + option.customSocketId
     }
     return name;
 }
@@ -63,9 +63,10 @@ module.exports = class RequestHandler {
         // mark a socketId for Agent to bind socket for NTLM
         if (req.socket.customSocketId) {
             rOptions.customSocketId = req.socket.customSocketId;
-        } else if (headers['authorization']) {
-            rOptions.customSocketId = req.socket.customSocketId = this.socketId++;
-        }
+        } 
+        // else if (headers['authorization']) {
+        //     rOptions.customSocketId = req.socket.customSocketId = this.socketId++;
+        // }
 
         var proxyRequestPromise = () => {
             return new Promise((resolve, reject) => {
@@ -103,13 +104,14 @@ module.exports = class RequestHandler {
             const proxyRes = await proxyRequestPromise()
 
             if (!res.headersSent) {  // prevent duplicate set headers
-                Object.keys(proxyRes.headers).forEach(function (key) {
+                Object.keys(proxyRes.headers).forEach((key) => {
                     if (proxyRes.headers[key] != undefined) {
                         // https://github.com/nodejitsu/node-http-proxy/issues/362
                         if (/^www-authenticate$/i.test(key)) {
                             if (proxyRes.headers[key]) {
                                 proxyRes.headers[key] = proxyRes.headers[key] && proxyRes.headers[key].split(',').map(item => item.trim());
                             }
+                            req.socket.customSocketId = req.socket.customSocketId || this.socketId++
                         }
                         res.setHeader(key, proxyRes.headers[key])
                     }
