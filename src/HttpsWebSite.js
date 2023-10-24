@@ -13,10 +13,11 @@ const defaultCaCertPath = path.join(__dirname, '../rootCA/rootCA.crt');
 const defaultCaKeyPath = path.join(__dirname, '../rootCA/rootCA.key.pem');
 
 module.exports = class FakeHttpsWebSite {
-    constructor({ requestHandler, maxQueue = 100, caCertPath = defaultCaCertPath, caKeyPath = defaultCaKeyPath }) {
+    constructor({ requestHandler, maxQueue = 100, caCertPath = defaultCaCertPath, caKeyPath = defaultCaKeyPath, proxyUrl }) {
         this.requestHandler = requestHandler
         this.caCertPath = caCertPath
         this.caKeyPath = caKeyPath
+        this.proxyUrl = proxyUrl
         this.serverQueue = []
         this.waitQueue = []
         this.maxQueue = maxQueue
@@ -103,7 +104,7 @@ module.exports = class FakeHttpsWebSite {
             })
 
             httpsServer.on('request', (req, res) => {
-                this.requestHandler.onRequest(req, res, true)
+                this.requestHandler.onRequest({ req, res, ssl: true, proxyUrl: this.proxyUrl })
             })
 
             httpsServer.on('error', (e) => {

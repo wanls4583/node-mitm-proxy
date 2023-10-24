@@ -13,12 +13,14 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
 const port = 6789;
 
 module.exports = class HttpProxy {
-    constructor({ caCertPath, caKeyPath } = {}) {
+    constructor({ caCertPath, caKeyPath, proxyUrl } = {}) {
         let requestHandler = new RequestHandler()
         this.requestHandler = requestHandler
+        this.proxyUrl = proxyUrl
         this.httpsWebSite = new HttpsWebSite({
             caCertPath,
             caKeyPath,
+            proxyUrl,
             requestHandler
         })
     }
@@ -62,7 +64,7 @@ module.exports = class HttpProxy {
         })
     }
     onRequest(req, res) {
-        this.requestHandler.onRequest(req, res);
+        this.requestHandler.onRequest({ req, res, proxyUrl: this.proxyUrl });
     }
     onError(e) {
         if (e.code == 'EADDRINUSE') {

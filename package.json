@@ -28,12 +28,9 @@
   "dependencies": {
     "agentkeepalive": "^2.2.0",
     "colors": "^1.4.0",
+    "https-proxy-agent": "^7.0.2",
     "lodash": "^4.7.0",
-    "mkdirp": "^0.5.1",
-    "node-forge": "^0.6.39",
-    "node-rsa": "^1.1.1",
-    "through2": "^2.0.1",
-    "tunnel-agent": "^0.4.3"
+    "node-forge": "^0.6.39"
   },
   "files": [
     "lib"

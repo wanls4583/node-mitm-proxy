@@ -4,6 +4,7 @@ const https = require('https')
 const colors = require('colors')
 const HttpAgent = require('agentkeepalive');
 const HttpsAgent = HttpAgent.HttpsAgent;
+const HttpsProxyAgent = require('https-proxy-agent').HttpsProxyAgent
 
 const _getName = HttpAgent.prototype.getName
 const getName = (option) => {
@@ -30,12 +31,11 @@ const httpAgent = new HttpAgent({
     keepAliveTimeout: 30000 // free socket keepalive for 30 seconds
 })
 
-
 module.exports = class RequestHandler {
     constructor() {
         this.socketId = 0
     }
-    async onRequest(req, res, ssl) {
+    async onRequest({ req, res, ssl, proxyUrl }) {
         var proxyReq = null;
         var urlObject = url.parse(req.url);
         var defaultPort = ssl ? 443 : 80;
@@ -51,19 +51,23 @@ module.exports = class RequestHandler {
         }
 
         delete headers['proxy-connection']
-        
-        if (headers.connection === 'close') {
-            req.socket.setKeepAlive(false);
+
+        if (proxyUrl) {
+            rOptions.agent = new HttpsProxyAgent(proxyUrl)
         } else {
-            headers.connection = 'keep-alive'
-            req.socket.setKeepAlive(true, 30000)
-            rOptions.agent = ssl ? httpsAgent : httpAgent
+            if (headers.connection === 'close') {
+                req.socket.setKeepAlive(false);
+            } else {
+                headers.connection = 'keep-alive'
+                req.socket.setKeepAlive(true, 30000)
+                rOptions.agent = ssl ? httpsAgent : httpAgent
+            }
         }
 
         // mark a socketId for Agent to bind socket for NTLM
         if (req.socket.customSocketId) {
             rOptions.customSocketId = req.socket.customSocketId;
-        } 
+        }
         // else if (headers['authorization']) {
         //     rOptions.customSocketId = req.socket.customSocketId = this.socketId++;
         // }
